@@ -27,7 +27,7 @@ client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 app = Flask(__name__)
 forwarding_enabled = True  # গ্লোবাল অন/অফ স্ট্যাটাস
 
-# ====== MongoDB সেটআপ ======= # 
+# ====== MongoDB সেটআপ ======= #
 
 MONGO_URI = os.getenv("MONGO_URI")
 mongo_client = MongoClient(MONGO_URI)
@@ -47,9 +47,12 @@ async def mark_as_forwarded(msg_id):
     except DuplicateKeyError:
         pass
 
-async def send_without_tag(target_chat, original_msg):
+async def send_file_without_tag(target_chat, original_msg):
+    if not original_msg.media:
+        return False  # Skip if no media
+
     if await is_forwarded(original_msg.id):
-        print(f"⏩ Skip Done (duplicate): {original_msg.id}")
+        print(f"⏩ Skip Done (duplicate file): {original_msg.id}")
         return False
     try:
         await client.forward_messages(
@@ -59,20 +62,20 @@ async def send_without_tag(target_chat, original_msg):
             silent=True
         )
         await mark_as_forwarded(original_msg.id)
-        print(f"✅ Forwarded: {original_msg.id}")
+        print(f"✅ Forwarded File: {original_msg.id}")
         return True
     except FloodWaitError as e:
         print(f"⏳ FloodWait: {e.seconds} Wait a second.")
         await asyncio.sleep(e.seconds)
-        return await send_without_tag(target_chat, original_msg)
+        return await send_file_without_tag(target_chat, original_msg)
     except Exception as e:
-        print(f"🚨 Forward error: {str(e)}")
+        print(f"🚨 Forward error (file): {str(e)}")
         return False
 
-async def forward_old_messages():
+async def forward_old_files():
     async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
-        if forwarding_enabled:
-            await send_without_tag(TARGET_CHAT_ID, message)
+        if forwarding_enabled and message.media:
+            await send_file_without_tag(TARGET_CHAT_ID, message)
             await asyncio.sleep(DELAY_SECONDS)
 
 @client.on(events.NewMessage(pattern='/status'))
@@ -86,22 +89,22 @@ async def off_handler(event):
     global forwarding_enabled
     if event.sender_id != USER_ID: return
     forwarding_enabled = False
-    await event.reply("❌ Forwarding has been disabled.")
+    await event.reply("❌ File forwarding has been disabled.")
 
 @client.on(events.NewMessage(pattern='/on'))
 async def on_handler(event):
     global forwarding_enabled
     if event.sender_id != USER_ID: return
     forwarding_enabled = True
-    await event.reply("✅ Forwarding is enabled.")
+    await event.reply("✅ File forwarding is enabled.")
 
 @client.on(events.NewMessage(chats=SOURCE_CHAT_ID))
 async def new_message_handler(event):
     global forwarding_enabled
-    if forwarding_enabled:
+    if forwarding_enabled and event.message.media:
         await asyncio.sleep(DELAY_SECONDS)
-        await send_without_tag(TARGET_CHAT_ID, event.message)
-        print(f"✅ {event.message.id} Forwarded")
+        await send_file_without_tag(TARGET_CHAT_ID, event.message)
+        print(f"✅ File {event.message.id} Forwarded")
 
 # === WOODcraft ==== SudoR2spr === #
 
@@ -112,8 +115,8 @@ def home():
 async def main():
     await client.start()
     print("✅ Bot launched successfully!")
-    # পুরনো মেসেজ ফরওয়ার্ড টাস্ক শুরু করুন
-    asyncio.create_task(forward_old_messages())
+    # পুরনো ফাইল ফরওয়ার্ড টাস্ক শুরু করুন
+    asyncio.create_task(forward_old_files())
     await client.run_until_disconnected()
 
 # === WOODcraft ==== SudoR2spr === #
